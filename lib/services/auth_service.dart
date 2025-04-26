@@ -4,8 +4,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
-  // Replace with your actual backend URL
-  // Use 10.0.2.2 for Android emulator to access localhost
   // Use your computer's IP when testing on a physical device
   final String baseUrl = 'http://10.0.2.2:3000/api/users';
 

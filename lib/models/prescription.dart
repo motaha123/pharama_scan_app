@@ -1,4 +1,3 @@
-import '../screens/prescription/history_screen.dart';
 import 'medication.dart';
 
 class Prescription {

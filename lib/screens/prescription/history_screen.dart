@@ -1,18 +1,19 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'package:easy_localization/easy_localization.dart';
+import 'dart:ui' as ui;
+import '../../models/medication.dart';
+import '../../models/prescription.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({Key? key}) : super(key: key);
 
   @override
-  _PrescriptionHistoryScreenState createState() => _PrescriptionHistoryScreenState();
+  _HistoryScreenState createState() => _HistoryScreenState();
 }
 
-class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
+class _HistoryScreenState extends State<HistoryScreen> {
   List<Prescription> _prescriptions = [];
   List<Prescription> _filteredPrescriptions = [];
   bool _isLoading = true;
@@ -36,79 +37,7 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
     await Future.delayed(Duration(milliseconds: 800)); // Simulating network delay
 
     List<Prescription> mockPrescriptions = [
-      Prescription(
-        id: '1',
-        imagePath: 'assets/images/prescription1.jpg',
-        dateScanned: DateTime.now().subtract(Duration(days: 2)),
-        recognizedText: 'Amoxicillin 500mg\nTake 1 tablet 3 times daily for 7 days',
-        doctorName: 'Dr. Ahmed Hassan',
-        status: PrescriptionStatus.filled,
-        pharmacy: 'El Ezaby Pharmacy',
-        medications: [
-          Medication(
-            name: 'Amoxicillin',
-            dosage: '500mg',
-            frequency: '3 times daily',
-            duration: '7 days',
-          ),
-        ],
-      ),
-      Prescription(
-        id: '2',
-        imagePath: 'assets/images/prescription2.jpg',
-        dateScanned: DateTime.now().subtract(Duration(days: 5)),
-        recognizedText: 'Paracetamol 500mg\nTake as needed for pain, max 4 per day',
-        doctorName: 'Dr. Sara Mahmoud',
-        status: PrescriptionStatus.sentToPharmacy,
-        pharmacy: 'Seif Pharmacy',
-        medications: [
-          Medication(
-            name: 'Paracetamol',
-            dosage: '500mg',
-            frequency: 'As needed',
-            duration: 'Max 4 per day',
-          ),
-        ],
-      ),
-      Prescription(
-        id: '3',
-        imagePath: 'assets/images/prescription3.jpg',
-        dateScanned: DateTime.now().subtract(Duration(days: 12)),
-        recognizedText: 'Vitamin D 1000 IU\nTake 1 tablet daily\nOmega-3 Fish Oil 1000mg\nTake 1 capsule daily',
-        doctorName: 'Dr. Mohamed Kamal',
-        status: PrescriptionStatus.unprocessed,
-        medications: [
-          Medication(
-            name: 'Vitamin D',
-            dosage: '1000 IU',
-            frequency: 'Daily',
-            duration: 'Ongoing',
-          ),
-          Medication(
-            name: 'Omega-3 Fish Oil',
-            dosage: '1000mg',
-            frequency: 'Daily',
-            duration: 'Ongoing',
-          ),
-        ],
-      ),
-      Prescription(
-        id: '4',
-        imagePath: 'assets/images/prescription4.jpg',
-        dateScanned: DateTime.now().subtract(Duration(days: 20)),
-        recognizedText: 'Lisinopril 10mg\nTake 1 tablet daily in the morning',
-        doctorName: 'Dr. Laila Adel',
-        status: PrescriptionStatus.filled,
-        pharmacy: 'Roshdy Pharmacy',
-        medications: [
-          Medication(
-            name: 'Lisinopril',
-            dosage: '10mg',
-            frequency: 'Daily in the morning',
-            duration: 'Ongoing',
-          ),
-        ],
-      ),
+      // Add mock prescriptions here
     ];
 
     setState(() {
@@ -125,7 +54,6 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
     } else {
       _filteredPrescriptions = _prescriptions.where((prescription) {
         return prescription.recognizedText.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-            prescription.doctorName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
             prescription.medications.any((med) => med.name.toLowerCase().contains(_searchQuery.toLowerCase()));
       }).toList();
     }
@@ -146,33 +74,31 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
         default:
           statusFilter = PrescriptionStatus.unprocessed;
       }
-
-      _filteredPrescriptions = _filteredPrescriptions.where((p) => p.status == statusFilter).toList();
     }
 
-    // Finally sort the filtered list
-    switch (_currentSortOption) {
-      case SortOption.dateAsc:
-        _filteredPrescriptions.sort((a, b) => a.dateScanned.compareTo(b.dateScanned));
-        break;
-      case SortOption.dateDesc:
-        _filteredPrescriptions.sort((a, b) => b.dateScanned.compareTo(a.dateScanned));
-        break;
-      case SortOption.doctorAZ:
-        _filteredPrescriptions.sort((a, b) => a.doctorName.compareTo(b.doctorName));
-        break;
-      case SortOption.doctorZA:
-        _filteredPrescriptions.sort((a, b) => b.doctorName.compareTo(a.doctorName));
-        break;
-    }
+    // Finally apply sorting
+    _filteredPrescriptions.sort((a, b) {
+      switch (_currentSortOption) {
+        case SortOption.dateDesc:
+          return b.dateScanned.compareTo(a.dateScanned);
+        case SortOption.dateAsc:
+          return a.dateScanned.compareTo(b.dateScanned);
+        case SortOption.doctorAZ:
+          return a.doctorName.compareTo(b.doctorName);
+        case SortOption.doctorZA:
+          return b.doctorName.compareTo(a.doctorName);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isArabic = context.locale.languageCode == 'ar';
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Prescription History',
+          'history'.tr(),
           style: GoogleFonts.poppins(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -202,77 +128,80 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              // Search Bar
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: TextField(
-                  style: TextStyle(color: Colors.white),
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                      _applyFiltersAndSort();
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Search prescriptions...',
-                    hintStyle: TextStyle(color: Colors.white70),
-                    prefixIcon: Icon(Icons.search, color: Colors.white70),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-
-              // Filter Chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    _buildFilterChip(FilterOption.all, 'All'),
-                    SizedBox(width: 8),
-                    _buildFilterChip(FilterOption.filled, 'Filled'),
-                    SizedBox(width: 8),
-                    _buildFilterChip(FilterOption.sentToPharmacy, 'Sent to Pharmacy'),
-                    SizedBox(width: 8),
-                    _buildFilterChip(FilterOption.unprocessed, 'Unprocessed'),
-                  ],
-                ),
-              ),
-
-              SizedBox(height: 8),
-
-              // Prescriptions List
-              Expanded(
-                child: _isLoading
-                    ? Center(child: CircularProgressIndicator(color: Colors.white))
-                    : _filteredPrescriptions.isEmpty
-                    ? Center(
-                  child: Text(
-                    'No prescriptions found',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      color: Colors.white,
+          child: Directionality(
+            textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
+            child: Column(
+              children: [
+                // Search Bar
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: TextField(
+                    style: TextStyle(color: Colors.white),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                        _applyFiltersAndSort();
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'search_prescriptions'.tr(),
+                      hintStyle: TextStyle(color: Colors.white70),
+                      prefixIcon: Icon(Icons.search, color: Colors.white70),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.1),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
-                )
-                    : ListView.builder(
-                  padding: EdgeInsets.all(16),
-                  itemCount: _filteredPrescriptions.length,
-                  itemBuilder: (context, index) {
-                    final prescription = _filteredPrescriptions[index];
-                    return _buildPrescriptionCard(prescription);
-                  },
                 ),
-              ),
-            ],
+
+                // Filter Chips
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      _buildFilterChip(FilterOption.all, 'filter_all'.tr()),
+                      SizedBox(width: 8),
+                      _buildFilterChip(FilterOption.filled, 'filter_filled'.tr()),
+                      SizedBox(width: 8),
+                      _buildFilterChip(FilterOption.sentToPharmacy, 'filter_sent'.tr()),
+                      SizedBox(width: 8),
+                      _buildFilterChip(FilterOption.unprocessed, 'filter_unprocessed'.tr()),
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: 8),
+
+                // Prescriptions List
+                Expanded(
+                  child: _isLoading
+                      ? Center(child: CircularProgressIndicator(color: Colors.white))
+                      : _filteredPrescriptions.isEmpty
+                      ? Center(
+                    child: Text(
+                      'no_prescriptions'.tr(),
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  )
+                      : ListView.builder(
+                    padding: EdgeInsets.all(16),
+                    itemCount: _filteredPrescriptions.length,
+                    itemBuilder: (context, index) {
+                      final prescription = _filteredPrescriptions[index];
+                      return _buildPrescriptionCard(prescription);
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -313,6 +242,8 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildPrescriptionCard(Prescription prescription) {
+    final isArabic = context.locale.languageCode == 'ar';
+
     return Card(
       margin: EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(
@@ -339,14 +270,13 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    DateFormat('MMM dd, yyyy').format(prescription.dateScanned),
+                    DateFormat('MMM dd, yyyy', context.locale.toString()).format(prescription.dateScanned),
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: Color(0xFF1E3A8A),
                     ),
                   ),
-                  _buildStatusChip(prescription.status),
                 ],
               ),
             ),
@@ -403,36 +333,13 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        SizedBox(height: 8),
-                        if (prescription.pharmacy != null && prescription.pharmacy!.isNotEmpty)
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.local_pharmacy,
-                                size: 16,
-                                color: Colors.grey[600],
-                              ),
-                              SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  prescription.pharmacy!,
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
                       ],
                     ),
                   ),
 
                   // Arrow Icon
                   Icon(
-                    Icons.arrow_forward_ios,
+                    isArabic ? Icons.arrow_back_ios : Icons.arrow_forward_ios,
                     size: 16,
                     color: Colors.grey[400],
                   ),
@@ -452,15 +359,15 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
     switch (status) {
       case PrescriptionStatus.filled:
         backgroundColor = Colors.green;
-        label = 'Filled';
+        label = 'status_filled'.tr();
         break;
       case PrescriptionStatus.sentToPharmacy:
         backgroundColor = Colors.orange;
-        label = 'Sent';
+        label = 'status_sent'.tr();
         break;
       case PrescriptionStatus.unprocessed:
         backgroundColor = Colors.grey;
-        label = 'New';
+        label = 'status_new'.tr();
         break;
     }
 
@@ -482,222 +389,218 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
   }
 
   void _showPrescriptionDetails(Prescription prescription) {
+    final isArabic = context.locale.languageCode == 'ar';
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header
-            Container(
-              padding: EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Color(0xFF5170FF),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Prescription Details',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      _buildStatusChip(prescription.status),
-                    ],
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Scanned on ${DateFormat('MMMM dd, yyyy').format(prescription.dateScanned)}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                  ),
-                ],
-              ),
+      builder: (context) => Directionality(
+        textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
             ),
-
-            // Content
-            Expanded(
-              child: SingleChildScrollView(
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Container(
                 padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Color(0xFF5170FF),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Doctor Information
-                    _buildDetailSection(
-                      title: 'Doctor',
-                      content: prescription.doctorName,
-                      icon: Icons.person,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'prescription_details'.tr(),
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
                     ),
-                    Divider(),
+                    SizedBox(height: 8),
+                    Text(
+                      'scanned_on'.tr() + ' ${DateFormat('MMMM dd, yyyy', context.locale.toString()).format(prescription.dateScanned)}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-                    // Pharmacy Information (if any)
-                    if (prescription.pharmacy != null && prescription.pharmacy!.isNotEmpty) ...[
+              // Content
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Doctor Information
                       _buildDetailSection(
-                        title: 'Pharmacy',
-                        content: prescription.pharmacy!,
-                        icon: Icons.local_pharmacy,
+                        title: 'doctor'.tr(),
+                        content: prescription.doctorName,
+                        icon: Icons.person,
                       ),
                       Divider(),
-                    ],
-
-                    // Medications
-                    Text(
-                      'Medications',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E3A8A),
+                      // Medications
+                      Text(
+                        'medications'.tr(),
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E3A8A),
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 16),
+                      SizedBox(height: 16),
 
-                    // Medication Cards
-                    ...prescription.medications.map((medication) => _buildMedicationCard(medication)),
+                      // Medication Cards
+                      ...prescription.medications.map((medication) => _buildMedicationCard(medication)),
 
-                    SizedBox(height: 24),
+                      SizedBox(height: 24),
 
-                    // Original Prescription Image
-                    Text(
-                      'Original Prescription',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E3A8A),
+                      // Original Prescription Image
+                      Text(
+                        'original_prescription'.tr(),
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E3A8A),
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.asset(
-                        prescription.imagePath,
-                        width: double.infinity,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            height: 200,
-                            color: Colors.grey[200],
-                            child: Center(
-                              child: Icon(
-                                Icons.image_not_supported,
-                                color: Colors.grey[500],
-                                size: 48,
+                      SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          prescription.imagePath,
+                          width: double.infinity,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              height: 200,
+                              color: Colors.grey[200],
+                              child: Center(
+                                child: Icon(
+                                  Icons.image_not_supported,
+                                  color: Colors.grey[500],
+                                  size: 48,
+                                ),
                               ),
-                            ),
+                            );
+                          },
+                        ),
+                      ),
+
+                      SizedBox(height: 24),
+
+                      // Recognized Text
+                      Text(
+                        'recognized_text'.tr(),
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E3A8A),
+                        ),
+                      ),
+                      SizedBox(height: 12),
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: Text(
+                          prescription.recognizedText,
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Action Buttons
+              Padding(
+                padding: EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    // Share Button
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // Implement share functionality
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('prescription_shared'.tr()))
                           );
                         },
+                        icon: Icon(Icons.share),
+                        label: Text('share'.tr()),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Color(0xFF1E3A8A),
+                          side: BorderSide(color: Color(0xFF1E3A8A)),
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                       ),
                     ),
+                    SizedBox(width: 16),
 
-                    SizedBox(height: 24),
-
-                    // Recognized Text
-                    Text(
-                      'Recognized Text',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E3A8A),
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Container(
-                      padding: EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: Text(
-                        prescription.recognizedText,
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          color: Colors.black87,
+                    // Send to Pharmacy Button
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          // Implement send to pharmacy functionality
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('sent_to_pharmacy'.tr()))
+                          );
+                        },
+                        icon: Icon(Icons.local_pharmacy),
+                        label: Text('send_to_pharmacy'.tr()),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color(0xFF1E3A8A),
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-
-            // Action Buttons
-            Padding(
-              padding: EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  // Share Button
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        // Implement share functionality
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Prescription shared'))
-                        );
-                      },
-                      icon: Icon(Icons.share),
-                      label: Text('Share'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Color(0xFF1E3A8A),
-                        side: BorderSide(color: Color(0xFF1E3A8A)),
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 16),
-
-                  // Send to Pharmacy Button
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: prescription.status == PrescriptionStatus.unprocessed
-                          ? () {
-                        // Navigate to pharmacy locator
-                        Navigator.pop(context);
-                        Navigator.pushNamed(context, '/pharmacy_locator');
-                      }
-                          : null,
-                      icon: Icon(Icons.local_pharmacy),
-                      label: Text('Send to Pharmacy'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Color(0xFF1E3A8A),
-                        foregroundColor: Colors.white,
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        disabledBackgroundColor: Colors.grey,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -783,11 +686,9 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
             ),
           ),
           SizedBox(height: 8),
-          _buildMedicationDetail('Dosage', medication.dosage),
+          _buildMedicationDetail('dosage'.tr(), medication.dosage),
           SizedBox(height: 4),
-          _buildMedicationDetail('Frequency', medication.frequency),
-          SizedBox(height: 4),
-          _buildMedicationDetail('Duration', medication.duration),
+          _buildMedicationDetail('frequency'.tr(), medication.frequency),
         ],
       ),
     );
@@ -822,31 +723,36 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
   }
 
   void _showSortOptions() {
+    final isArabic = context.locale.languageCode == 'ar';
+
     showModalBottomSheet(
       context: context,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Sort By',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E3A8A),
+      builder: (context) => Directionality(
+        textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
+        child: Container(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'sort_by'.tr(),
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E3A8A),
+                ),
               ),
-            ),
-            SizedBox(height: 16),
-            _buildSortOption(SortOption.dateDesc, 'Newest First'),
-            _buildSortOption(SortOption.dateAsc, 'Oldest First'),
-            _buildSortOption(SortOption.doctorAZ, 'Doctor (A-Z)'),
-            _buildSortOption(SortOption.doctorZA, 'Doctor (Z-A)'),
-          ],
+              SizedBox(height: 16),
+              _buildSortOption(SortOption.dateDesc, 'dateDesc'.tr()),
+              _buildSortOption(SortOption.dateAsc, 'dateAsc'.tr()),
+              _buildSortOption(SortOption.doctorAZ, 'doctorAZ'.tr()),
+              _buildSortOption(SortOption.doctorZA, 'doctorZA'.tr()),
+            ],
+          ),
         ),
       ),
     );
@@ -877,31 +783,36 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
   }
 
   void _showFilterOptions() {
+    final isArabic = context.locale.languageCode == 'ar';
+
     showModalBottomSheet(
       context: context,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Container(
-        padding: EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Filter By Status',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E3A8A),
+      builder: (context) => Directionality(
+        textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
+        child: Container(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'filter_by_status'.tr(),
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E3A8A),
+                ),
               ),
-            ),
-            SizedBox(height: 16),
-            _buildFilterOption(FilterOption.all, 'All Prescriptions'),
-            _buildFilterOption(FilterOption.filled, 'Filled Prescriptions'),
-            _buildFilterOption(FilterOption.sentToPharmacy, 'Sent to Pharmacy'),
-            _buildFilterOption(FilterOption.unprocessed, 'Unprocessed Prescriptions'),
-          ],
+              SizedBox(height: 16),
+              _buildFilterOption(FilterOption.all, 'all_prescriptions'.tr()),
+              _buildFilterOption(FilterOption.filled, 'filled_prescriptions'.tr()),
+              _buildFilterOption(FilterOption.sentToPharmacy, 'sent_to_pharmacy_prescriptions'.tr()),
+              _buildFilterOption(FilterOption.unprocessed, 'unprocessed_prescriptions'.tr()),
+            ],
+          ),
         ),
       ),
     );
@@ -930,44 +841,6 @@ class _PrescriptionHistoryScreenState extends State<HistoryScreen> {
       },
     );
   }
-}
-
-// Model Classes
-
-class Prescription {
-  final String id;
-  final String imagePath;
-  final DateTime dateScanned;
-  final String recognizedText;
-  final String doctorName;
-  final PrescriptionStatus status;
-  final String? pharmacy;
-  final List<Medication> medications;
-
-  Prescription({
-    required this.id,
-    required this.imagePath,
-    required this.dateScanned,
-    required this.recognizedText,
-    required this.doctorName,
-    required this.status,
-    this.pharmacy,
-    required this.medications,
-  });
-}
-
-class Medication {
-  final String name;
-  final String dosage;
-  final String frequency;
-  final String duration;
-
-  Medication({
-    required this.name,
-    required this.dosage,
-    required this.frequency,
-    required this.duration,
-  });
 }
 
 enum PrescriptionStatus {
