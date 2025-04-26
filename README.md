@@ -1,6 +1,155 @@
-# pharma_scan
+# Pharma Scan - Handwritten Prescription Recognition
 
-This Is Our Project Graduation 
-## Getting Started
+## Description
 
-This project is a starting point for a Flutter application.
+PharmaScan is a mobile application designed to digitize and interpret handwritten medical prescriptions using advanced AI recognition technology. The app addresses the common challenge of deciphering doctors' handwriting, helping users to accurately understand their medication details.
+
+## Key Features
+
+- **Prescription Scanning**: Capture images of handwritten prescriptions through the device camera or upload from gallery
+- **AI-Powered Recognition**: Advanced machine learning algorithms to recognize and interpret handwritten medical text
+- **Prescription History**: Securely store and access past prescriptions for reference
+- **User Authentication**: Secure login and signup system to protect sensitive medical information
+- **Intuitive UI/UX**: Clean, accessible interface designed for users of all ages and technical abilities
+
+## Technology Stack
+
+### Frontend
+
+- **Flutter**: Cross-platform framework for building the mobile application
+- **Dart**: Programming language for Flutter development
+- **Shared Preferences**: Local storage for user session management
+- **HTTP Package**: For API communication
+
+
+### Backend
+
+- **Node.js**: Server-side JavaScript runtime
+- **Express**: Web application framework for Node.js
+- **MongoDB**: NoSQL database for storing user and prescription data
+- **Bcrypt**: Password hashing for secure user data storage
+
+## Installation
+
+### Prerequisites
+
+- Flutter SDK (2.10.0 or higher)
+- Dart SDK (2.16.0 or higher)
+- Node.js (14.x or higher)
+- MongoDB (4.4 or higher)
+
+
+### Backend Setup
+
+1. Clone the repository
+
+```
+git clone https://github.com/omr-ql/pharma-scan.git
+```
+
+2. Navigate to the backend directory
+
+```
+cd pharma-scan/pharma-scan-backend
+```
+
+3. Install dependencies
+
+```
+npm install
+```
+
+4. Create a .env file with the following variables
+
+```
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/pharmascan
+JWT_SECRET=your_jwt_secret
+```
+
+5. Start the server
+
+```
+npm start
+```
+
+### Frontend Setup
+
+1. Navigate to the frontend directory
+
+```
+cd ../pharma_scan_app
+```
+
+2. Install Flutter dependencies
+
+```
+flutter pub get
+```
+
+3. Run the app
+
+```
+flutter run
+```
+
+
+## Project Structure
+
+```
+pharma_scan_app/
+├── lib/
+│   ├── main.dart                   # App entry point
+│   ├── models/                     # Data models
+│   │   ├── Medication.dart         # Medication Data model
+│   │   └── prescription.dart       # Prescription Data model   
+│   ├── screens/                    # App screens
+│   │   ├── auth/
+│   │   │   ├── welcome_screen.dart # Welcome screen
+│   │   │   ├── login_page.dart     # Login screen
+│   │   │   └── signup_page.dart    # Signup screen
+│   │   ├── home/
+│   │   │   └── home_screen.dart    # Home screen
+│   │   └── prescription/
+│   │       └── history_screen.dart  # History screen
+|   |       └── results_screen.dart  # Results from an AI screen
+│   ├── services/        
+│   │       ├── auth_service.dart 
+```
+## Usage
+
+1. **Registration/Login**: Create an account or log in with existing credentials
+2. **Scan Prescription**: Use the camera to capture a prescription image
+3. **View Results**: See the digitized text and extracted medication details
+4. **Access History**: Review past prescriptions in the history section
+
+## Project Status
+
+This application is currently under development. The authentication system is fully implemented, and the prescription scanning and recognition features are being refined.
+
+## Future Enhancements
+
+- Email verification for new accounts
+- Password reset functionality
+- Dark mode support
+- Export prescriptions as PDF
+
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgements
+
+- [Flutter](https://flutter.dev/)
+- [Node.js](https://nodejs.org/)
+- [MongoDB](https://www.mongodb.com/)
+- [Express](https://expressjs.com/)

@@ -1,32 +1,54 @@
 import 'package:flutter/material.dart';
-import 'screens/settings/settings_screen.dart'; // Import Settings Screen
-import 'screens/prescription/history_screen.dart'; // Import History Screen
-import 'screens/auth/welcome_screen.dart'; // Import Welcome Screen
-import 'screens/auth//login_screen.dart'; // Import Log-in Screen
-import 'screens/auth/signup_screen.dart'; // Import Sign-up Screen
-import 'screens/home/home_screen.dart'; // Import Home Screen
+import 'package:easy_localization/easy_localization.dart';
+import 'package:pharma_scan/screens/prescription/history_screen.dart';
+import 'package:pharma_scan/screens/settings/settings_screen.dart';
+import 'package:pharma_scan/screens/auth/welcome_screen.dart';
+import 'package:pharma_scan/screens/auth/login_screen.dart';
+import 'package:pharma_scan/screens/auth/signup_screen.dart';
+import 'package:pharma_scan/screens/home/home_screen.dart';
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await EasyLocalization.ensureInitialized();
 
-void main() {
-  runApp(MyApp());
+  runApp(
+    EasyLocalization(
+      supportedLocales: const [Locale('en'), Locale('ar')],
+      path: 'assets/translations',
+      fallbackLocale: const Locale('en'),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Pharma Scan',
+      debugShowCheckedModeBanner: false,
+      localizationsDelegates: context.localizationDelegates,
+      supportedLocales: context.supportedLocales,
+      locale: context.locale,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        fontFamily: 'Poppins',
       ),
-      initialRoute: '/',
+      home: const WelcomeScreen(),
       routes: {
-        '/': (context) => WelcomeScreen(), // Welcome Page
-        '/login': (context) => LoginPage(), // Log-In Page
-        '/signup': (context) => SignupPage(), // Sign-Up Page
-        '/home': (context) => HomeScreen(), // Home Page
-        '/prescription_history': (context) => HistoryScreen(), // History Screen
-        '/settings': (context) => SettingsScreen(), // Settings
+        '/login': (context) =>  LoginPage(),
+        '/signup': (context) =>  SignupPage(),
+        '/home': (context) =>  HomeScreen(),
+        '/settings': (context) => SettingsScreen(),
+        '/history': (context) => HistoryScreen(),
+      },
+      onGenerateRoute: (settings) {
+        // Add any custom route generation logic here if needed
+        return MaterialPageRoute(
+          builder: (context) => const WelcomeScreen(),
+        );
       },
     );
   }

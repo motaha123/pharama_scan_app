@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'dart:ui' as ui;
+import '../auth/welcome_screen.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'dart:async';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -11,18 +16,70 @@ class SettingsScreen extends StatefulWidget {
   _SettingsScreenState createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
   bool _darkModeEnabled = false;
   bool _autoSaveEnabled = true;
-  String _selectedLanguage = 'English';
   String _appVersion = 'Beta';
-  final List<String> _languages = ['English', 'Arabic'];
+  String _userName = '';
+  String _userEmail = '';
+  bool _isLoading = true;
+  Timer? _autoSaveTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSettings();
     _getAppVersion();
+    _loadUserData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoSaveTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // Save any pending changes when app goes to background
+      if (_autoSaveEnabled) {
+        _saveAllSettings();
+      }
+    }
+  }
+
+  void autoSave(Function saveFunction) {
+    if (_autoSaveTimer != null) {
+      _autoSaveTimer!.cancel();
+    }
+
+    _autoSaveTimer = Timer(Duration(seconds: 1), () {
+      if (_autoSaveEnabled) {
+        saveFunction();
+      }
+    });
+  }
+
+  void _showAutoSaveNotification() {
+    if (_autoSaveEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('settings_saved'.tr()),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
+  void _saveAllSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('dark_mode_enabled', _darkModeEnabled);
+    await prefs.setBool('auto_save_enabled', _autoSaveEnabled);
+    // Save other settings as needed
   }
 
   Future<void> _loadSettings() async {
@@ -30,15 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _darkModeEnabled = prefs.getBool('dark_mode_enabled') ?? false;
       _autoSaveEnabled = prefs.getBool('auto_save_enabled') ?? true;
-      _selectedLanguage = prefs.getString('selected_language') ?? 'English';
     });
-  }
-
-  Future<void> _saveSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('dark_mode_enabled', _darkModeEnabled);
-    await prefs.setBool('auto_save_enabled', _autoSaveEnabled);
-    await prefs.setString('selected_language', _selectedLanguage);
   }
 
   Future<void> _getAppVersion() async {
@@ -48,21 +97,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      if (token == null) {
+        // No token found, user is not logged in
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+              (Route<dynamic> route) => false,
+        );
+        return;
+      }
+
+      // Make API request to get user profile
+      final response = await http.get(
+        Uri.parse('http://192.168.1.131:5000/api/users/me'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          _userName = data['user']['name'];
+          _userEmail = data['user']['email'];
+          _isLoading = false;
+        });
+      } else {
+        // Token might be invalid or expired
+        _handleAuthError();
+      }
+    } catch (error) {
+      print('Error loading user data: $error');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _handleAuthError() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+          (Route<dynamic> route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Settings',
+          'settings'.tr(),
           style: GoogleFonts.poppins(
             fontSize: 20,
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.bold, color: Colors.white
           ),
         ),
-        backgroundColor: Color(0xFF5170FF),
+        backgroundColor: const Color(0xFF5170FF),
       ),
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
@@ -74,129 +175,147 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         child: SafeArea(
           child: SingleChildScrollView(
-            padding: EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSectionTitle('Account'),
+                _buildSectionTitle('account'.tr()),
                 _buildProfileCard(),
-                SizedBox(height: 24),
-
-                _buildSectionTitle('App Preferences'),
+                const SizedBox(height: 24),
+                _buildSectionTitle('app_preferences'.tr()),
+                _buildLanguageSelector(),
+                const SizedBox(height: 8),
                 _buildSettingSwitch(
-                  'Dark Mode',
-                  'Toggle dark theme for the app',
+                  'dark_mode'.tr(),
+                  'dark_mode_desc'.tr(),
                   _darkModeEnabled,
                       (value) {
-                    setState(() {
-                      _darkModeEnabled = value;
-                      _saveSettings();
-                      // Here you would implement dark mode toggling
+                    setState(() => _darkModeEnabled = value);
+                    autoSave(() async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool('dark_mode_enabled', value);
+                      _showAutoSaveNotification();
                     });
                   },
                   Icons.dark_mode,
                 ),
                 _buildSettingSwitch(
-                  'Auto-Save',
-                  'Automatically save scanned prescriptions',
+                  'auto_save'.tr(),
+                  'auto_save_desc'.tr(),
                   _autoSaveEnabled,
                       (value) {
-                    setState(() {
-                      _autoSaveEnabled = value;
-                      _saveSettings();
+                    setState(() => _autoSaveEnabled = value);
+                    // Auto-save setting itself should be saved immediately
+                    SharedPreferences.getInstance().then((prefs) {
+                      prefs.setBool('auto_save_enabled', value);
                     });
                   },
                   Icons.save,
                 ),
-                SizedBox(height: 8),
-
-                _buildLanguageSelector(),
-
-                SizedBox(height: 24),
-
-                _buildSectionTitle('Data & Privacy'),
+                const SizedBox(height: 24),
+                _buildSectionTitle('data_privacy'.tr()),
                 _buildSettingItem(
-                  'Data Storage',
-                  'Manage how your prescription data is stored',
-                  Icons.storage,
-                      () {
-                    // Navigate to data storage settings
-                  },
-                ),
-                _buildSettingItem(
-                  'Privacy Policy',
-                  'Read our privacy policy',
+                  'privacy_policy'.tr(),
+                  'privacy_policy_desc'.tr(),
                   Icons.privacy_tip,
-                      () {
-                    // Navigate to privacy policy
-                  },
+                      () {},
                 ),
                 _buildSettingItem(
-                  'Delete Account',
-                  'Permanently delete your account and data',
+                  'delete_account'.tr(),
+                  'delete_account_desc'.tr(),
                   Icons.delete_forever,
-                      () {
-                    _showDeleteAccountDialog();
-                  },
+                  _showDeleteAccountDialog,
                   textColor: Colors.red,
                 ),
-
-                SizedBox(height: 24),
-
-                _buildSectionTitle('Support'),
+                const SizedBox(height: 24),
+                _buildSectionTitle('support'.tr()),
                 _buildSettingItem(
-                  'Help Center',
-                  'Get help with using the app',
-                  Icons.help,
-                      () {
-                    // Navigate to help center
-                  },
-                ),
-                _buildSettingItem(
-                  'Report a Problem',
-                  'Let us know if something isn\'t working',
-                  Icons.report_problem,
-                      () {
-                    // Navigate to problem reporting
-                  },
-                ),
-                _buildSettingItem(
-                  'Contact Us',
-                  'Get in touch with our support team',
+                  'contact_us'.tr(),
+                  'contact_us_desc'.tr(),
                   Icons.mail,
-                      () {
-                    // Navigate to contact form or email
-                  },
+                      () {},
                 ),
-
-                SizedBox(height: 24),
-
-                _buildSectionTitle('About'),
+                const SizedBox(height: 24),
+                _buildSectionTitle('about'.tr()),
                 _buildSettingItem(
-                  'App Version',
+                  'app_version'.tr(),
                   'v$_appVersion',
                   Icons.info,
-                      () {
-                    // Show app version info
-                  },
+                      () {},
                   showTrailingIcon: false,
                 ),
-                _buildSettingItem(
-                  'Terms of Service',
-                  'Read our terms of service',
-                  Icons.description,
-                      () {
-                    // Navigate to terms of service
-                  },
-                ),
-
-                SizedBox(height: 24),
-
+                const SizedBox(height: 24),
                 _buildLogoutButton(),
-
-                SizedBox(height: 40),
+                const SizedBox(height: 40),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLanguageSelector() {
+    final isArabic = context.locale.languageCode == 'ar';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: ListTile(
+          leading: const Icon(Icons.language, color: Colors.white),
+          title: Text(
+            'language'.tr(),
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          subtitle: Text(
+            'change_language_desc'.tr(),
+            style: GoogleFonts.poppins(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 12,
+            ),
+          ),
+          trailing: DropdownButton<ui.Locale>(
+            value: context.locale,
+            dropdownColor: const Color(0xFF1E3A8A),
+            style: GoogleFonts.poppins(color: Colors.white),
+            underline: Container(),
+            items: [
+              DropdownMenuItem(
+                value: const ui.Locale('en'),
+                child: Text(
+                  'english'.tr(),
+                  style: GoogleFonts.poppins(color: Colors.white),
+                ),
+              ),
+              DropdownMenuItem(
+                value: const ui.Locale('ar'),
+                child: Text(
+                  'arabic'.tr(),
+                  style: GoogleFonts.poppins(color: Colors.white),
+                ),
+              )
+            ],
+            onChanged: (ui.Locale? locale) async {
+              if (locale != null) {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('language', locale.languageCode);
+                context.setLocale(locale);
+
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+                      (Route<dynamic> route) => false,
+                );
+              }
+            },
+            icon: Icon(Icons.arrow_drop_down, color: Colors.white),
           ),
         ),
       ),
@@ -219,38 +338,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildProfileCard() {
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: _isLoading
+          ? Center(
+        child: CircularProgressIndicator(
+          color: Colors.white,
+        ),
+      )
+          : Row(
         children: [
           CircleAvatar(
             radius: 32,
             backgroundColor: Colors.white.withOpacity(0.3),
-            child: Icon(
+            child: _userName.isNotEmpty
+                ? Text(
+              _userName[0].toUpperCase(),
+              style: GoogleFonts.poppins(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            )
+                : const Icon(
               Icons.person,
               size: 40,
               color: Colors.white,
             ),
           ),
-          SizedBox(width: 16),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Omar',  // Replace with actual user name
+                  _userName,
                   style: GoogleFonts.poppins(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  'user@example.com',  // Replace with actual user email
+                  _userEmail,
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     color: Colors.white.withOpacity(0.8),
@@ -258,12 +392,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
-          ),
-          IconButton(
-            icon: Icon(Icons.edit, color: Colors.white),
-            onPressed: () {
-              // Navigate to profile edit screen
-            },
           ),
         ],
       ),
@@ -304,13 +432,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onChanged: onChanged,
           activeColor: Colors.white,
           activeTrackColor: Colors.green,
-          inactiveThumbColor: Colors.white,
-          inactiveTrackColor: Colors.white.withOpacity(0.3),
-          secondary: Icon(
-            icon,
-            color: Colors.white,
-            size: 28,
-          ),
+          secondary: Icon(icon, color: Colors.white),
         ),
       ),
     );
@@ -332,11 +454,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: ListTile(
-          leading: Icon(
-            icon,
-            color: Colors.white,
-            size: 28,
-          ),
+          leading: Icon(icon, color: Colors.white),
           title: Text(
             title,
             style: GoogleFonts.poppins(
@@ -353,11 +471,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           trailing: showTrailingIcon
-              ? Icon(
-            Icons.arrow_forward_ios,
-            color: Colors.white.withOpacity(0.7),
-            size: 16,
-          )
+              ? const Icon(Icons.arrow_forward_ios, color: Colors.white70)
               : null,
           onTap: onTap,
         ),
@@ -365,84 +479,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildLanguageSelector() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: ListTile(
-          leading: Icon(
-            Icons.language,
-            color: Colors.white,
-            size: 28,
-          ),
-          title: Text(
-            'Language',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: Colors.white,
-            ),
-          ),
-          subtitle: Text(
-            'Select your preferred language',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-          trailing: DropdownButton<String>(
-            value: _selectedLanguage,
-            dropdownColor: Color(0xFF1E3A8A),
-            iconEnabledColor: Colors.white,
-            underline: Container(),
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: Colors.white,
-            ),
-            onChanged: (String? newValue) {
-              if (newValue != null) {
-                setState(() {
-                  _selectedLanguage = newValue;
-                  _saveSettings();
-                });
-              }
-            },
-            items: _languages.map<DropdownMenuItem<String>>((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Text(value),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildLogoutButton() {
-    return Container(
+    return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: () {
-          _showLogoutDialog();
-        },
-        icon: Icon(Icons.logout),
+        onPressed: _showLogoutDialog,
+        icon: const Icon(Icons.logout),
         label: Text(
-          'Log Out',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
+          'log_out'.tr(),
+          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.white,
-          foregroundColor: Color(0xFF1E3A8A),
-          padding: EdgeInsets.symmetric(vertical: 12),
+          foregroundColor: const Color(0xFF1E3A8A),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -454,67 +504,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showLogoutDialog() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Log Out'),
-          content: Text('Are you sure you want to log out?'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('Cancel'),
+      builder: (context) => AlertDialog(
+        title: Text('log_out'.tr()),
+        content: Text('logout_confirmation'.tr()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('cancel'.tr()),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              // Clear the token
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('token');
+
+              Navigator.pop(context);
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/',
+                    (route) => false,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF5170FF),
             ),
-            ElevatedButton(
-              onPressed: () {
-                // Perform logout logic
-                Navigator.of(context).pop();
-                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF5170FF),
-              ),
-              child: Text('Log Out'),
-            ),
-          ],
-        );
-      },
+            child: Text('log_out'.tr()),
+          ),
+        ],
+      ),
     );
   }
 
   void _showDeleteAccountDialog() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Delete Account'),
-          content: Text(
-              'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                // Perform account deletion logic
-                Navigator.of(context).pop();
-                // Show confirmation and navigate to welcome screen
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Account deleted successfully')),
-                );
-                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-              ),
-              child: Text('Delete'),
-            ),
-          ],
-        );
-      },
+      builder: (context) => AlertDialog(
+        title: Text('delete_account'.tr()),
+        content: Text('delete_account_warning'.tr()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('cancel'.tr()),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/',
+                    (route) => false,
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text('delete'.tr()),
+          ),
+        ],
+      ),
     );
   }
 }

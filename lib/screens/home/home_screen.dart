@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lottie/lottie.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'dart:ui' as ui;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -17,7 +19,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future getImage(ImageSource source) async {
     final pickedFile = await picker.pickImage(source: source);
-
     setState(() {
       if (pickedFile != null) {
         _image = File(pickedFile.path);
@@ -27,35 +28,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isArabic = context.locale.languageCode == 'ar';
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Pharma Scan',
+          'appTitle'.tr(),
           style: GoogleFonts.poppins(
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: Color(0xFF5170FF),
+        backgroundColor: const Color(0xFF5170FF),
         actions: [
           IconButton(
-            icon: Icon(Icons.history),
-            onPressed: () {
-              // Navigate to prescription history screen
-              Navigator.pushNamed(context, '/prescription_history');
-            },
+            icon: const Icon(Icons.history),
+            onPressed: () => Navigator.pushNamed(context, '/history'),
           ),
           IconButton(
-            icon: Icon(Icons.settings),
-            onPressed: () {
-              // Navigate to settings screen
-              Navigator.pushNamed(context, '/settings');
-            },
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.pushNamed(context, '/settings'),
           ),
         ],
       ),
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
@@ -66,101 +63,99 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Upload Prescription',
-                  style: GoogleFonts.poppins(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 20),
-                Expanded(
-                  child: _image == null
-                      ? Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
+          child: Directionality(
+            textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'uploadPrescription'.tr(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
-                    child: Center(
-                      child: Lottie.asset(
-                        'assets/animations/upload_animation.json',
-                        width: 200,
-                        height: 200,
-                        fit: BoxFit.contain,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: _image == null
+                        ? Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Center(
+                        child: Lottie.asset(
+                          'assets/animations/upload_animation.json',
+                          width: 200,
+                          height: 200,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    )
+                        : ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Image.file(
+                        _image!,
+                        fit: BoxFit.cover,
                       ),
                     ),
-                  )
-                      : ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: Image.file(
-                      _image!,
-                      fit: BoxFit.cover,
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: () => getImage(ImageSource.camera),
+                    icon: const Icon(Icons.camera_alt),
+                    label: Text('takePhoto'.tr()),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFF1E3A8A),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(height: 20),
-                ElevatedButton.icon(
-                  onPressed: () => getImage(ImageSource.camera),
-                  icon: Icon(Icons.camera_alt),
-                  label: Text('Take a Photo'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Color(0xFF1E3A8A),
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: () => getImage(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library),
+                    label: Text('chooseGallery'.tr()),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFF1E3A8A),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(height: 12),
-                ElevatedButton.icon(
-                  onPressed: () => getImage(ImageSource.gallery),
-                  icon: Icon(Icons.photo_library),
-                  label: Text('Choose from Gallery'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Color(0xFF1E3A8A),
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: _image != null
+                        ? () => Navigator.pushNamed(context, '/scan_results', arguments: _image)
+                        : null,
+                    child: Text(
+                      'scanPrescription'.tr(),
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E3A8A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      disabledBackgroundColor: Colors.grey,
                     ),
                   ),
-                ),
-                SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: _image != null
-                      ? () {
-                    // Implement prescription scanning logic here
-                    // This could involve sending the image to your backend for processing
-                    // and then navigating to a results screen
-                    Navigator.pushNamed(context, '/scan_results', arguments: _image);
-                  }
-                      : null,
-                  child: Text(
-                    'Scan Prescription',
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF1E3A8A),
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    disabledBackgroundColor: Colors.grey,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
