@@ -147,6 +147,13 @@ This application is currently under development. The authentication system is fu
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Authors 
+ - [MHD TAHA](https://github.com/motaha123/)
+ - [OMR ABDULLAH](https://github.com/omr-ql/)
+ - [Sanad Ali]()
+ - [Mazen Bahie](https://github.com/MazenBahie)
+ - [Malik Yahya]()
+
 ## Acknowledgements
 
 - [Flutter](https://flutter.dev/)
