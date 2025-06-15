@@ -1,5 +1,5 @@
 name: pharma_scan
-description: "A new Flutter project."
+description: "Pharma Scan is a mobile application designed to digitize handwritten medical prescriptions using advanced AI recognition technology, The app solve common challenge of deciphering doctors' handwriting, helping people to understand their medication details."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
