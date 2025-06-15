@@ -64,7 +64,7 @@ npm install
 ```
 PORT=5000
 MONGO_URI=mongodb://localhost:27017/pharmascan
-JWT_SECRET=your_jwt_secret
+JWT_SECRET=
 ```
 
 5. Start the server
@@ -148,11 +148,11 @@ This application is currently under development. The authentication system is fu
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Authors 
- - [MHD TAHA](https://github.com/motaha123/)
- - [OMR ABDULLAH](https://github.com/omr-ql/)
- - [Sanad Ali]()
- - [Mazen Bahie](https://github.com/MazenBahie)
- - [Malik Yahya]()
+ - [MHD TAHA](https://github.com/motaha123/) : Contributed in implementing the computer vision model and enhance the accuracy.
+ - [OMR ABDULLAH](https://github.com/omr-ql/) : Contributed in implementing the flutter designing and backend programming using node js.  
+ - [Sanad Ali]() : Contributed in writing the documentation and presentation. 
+ - [Mazen Bahie](https://github.com/MazenBahie) : Contributed in implementing connect the AI model to our flutter app.س 
+ - [Malik Yahya]() : Contributed implementing the natural language processing model and enhance the segmentation.
 
 ## Acknowledgements
 
