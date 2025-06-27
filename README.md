@@ -1,11 +1,9 @@
 # Pharma Scan - Handwritten Prescription Recognition
 
 ## Description
-
 PharmaScan is a mobile application designed to digitize and interpret handwritten medical prescriptions using advanced AI recognition technology. The app addresses the common challenge of deciphering doctors' handwriting, helping users to accurately understand their medication details.
 
 ## Key Features
-
 - **Prescription Scanning**: Capture images of handwritten prescriptions through the device camera or upload from gallery
 - **AI-Powered Recognition**: Advanced machine learning algorithms to recognize and interpret handwritten medical text
 - **Prescription History**: Securely store and access past prescriptions for reference
@@ -13,9 +11,7 @@ PharmaScan is a mobile application designed to digitize and interpret handwritte
 - **Intuitive UI/UX**: Clean, accessible interface designed for users of all ages and technical abilities
 
 ## Technology Stack
-
 ### Frontend
-
 - **Flutter**: Cross-platform framework for building the mobile application
 - **Dart**: Programming language for Flutter development
 - **Shared Preferences**: Local storage for user session management
@@ -23,7 +19,6 @@ PharmaScan is a mobile application designed to digitize and interpret handwritte
 
 
 ### Backend
-
 - **FastApi**: Server-side Python Backend
 - **MongoDB**: NoSQL database for storing user and prescription data
 - **Bcrypt**: Password hashing for secure user data storage
@@ -115,18 +110,15 @@ pharma_scan_app/
 │   │       ├── auth_service.dart 
 ```
 ## Usage
-
 1. **Registration/Login**: Create an account or log in with existing credentials
 2. **Scan Prescription**: Use the camera to capture a prescription image
 3. **View Results**: See the digitized text and extracted medication details
 4. **Access History**: Review past prescriptions in the history section
 
 ## Project Status
-
 This application is currently under development. The authentication system is fully implemented, and the prescription scanning and recognition features are being refined.
 
 ## Contributing
-
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
@@ -134,7 +126,6 @@ This application is currently under development. The authentication system is fu
 5. Open a Pull Request
 
 ## License
-
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Authors 
