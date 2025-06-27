@@ -274,7 +274,7 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
   }
-  // Welcome Screen Design
+  // Login Screen Design
   @override
   Widget build(BuildContext context) {
     final isArabic = context.locale.languageCode == 'ar';
