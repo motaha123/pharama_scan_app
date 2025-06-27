@@ -4,8 +4,10 @@ import 'package:flutter/gestures.dart';
 import 'package:http/http.dart' as http;
 import 'package:easy_localization/easy_localization.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:convert';
 import 'dart:ui' as ui;
+
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
 
@@ -21,10 +23,27 @@ class _LoginPageState extends State<LoginPage> {
   bool _rememberMe = false;
   bool _isLoading = false;
 
+  // Secure storage for JWT tokens
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
+
   @override
   void initState() {
     super.initState();
     _loadSavedCredentials();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSavedCredentials() async {
@@ -37,11 +56,164 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
+  // Simple Success SnackBar at bottom
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF5170FF),
+                Color(0xFF1E3A8A),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF5170FF).withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.done,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  // Simple Error SnackBar at bottom
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF1E3A8A),
+                Color(0xFFE53E3E),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.red.withOpacity(0.3),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF1E3A8A).withOpacity(0.4),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.red.withOpacity(0.4),
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.error_outline,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.warning,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
   }
 
   Future<void> _login() async {
@@ -49,18 +221,31 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => _isLoading = true);
       try {
         final response = await http.post(
-          Uri.parse('http://192.168.1.131:5000/api/users/login'),
-          headers: {'Content-Type': 'application/json'},
+          Uri.parse('http://192.168.1.8:5000/api/users/login'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
           body: json.encode({
             'email': _emailController.text.trim(),
-            'password': _passwordController.text.trim(),
+            'password': _passwordController.text,
           }),
         );
 
         final responseData = json.decode(response.body);
+
         if (response.statusCode == 200) {
+          // Store JWT token securely
+          await _secureStorage.write(
+              key: 'jwt_token',
+              value: responseData['access_token']
+          );
+
+          // Store user data in SharedPreferences for easy access
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('token', responseData['token']);
+          await prefs.setString('user_id', responseData['user']['id']);
+          await prefs.setString('user_name', responseData['user']['name']);
+          await prefs.setString('user_email', responseData['user']['email']);
           await prefs.setBool('remember_me', _rememberMe);
 
           if (_rememberMe) {
@@ -69,26 +254,25 @@ class _LoginPageState extends State<LoginPage> {
             await prefs.remove('saved_email');
           }
 
-          Navigator.pushReplacementNamed(context, '/home');
+          // Show simple success SnackBar at bottom
+          _showSuccessSnackBar('login_successful'.tr());
+
+          // Navigate to home after a short delay
+          Future.delayed(const Duration(seconds: 1), () {
+            Navigator.pushReplacementNamed(context, '/home');
+          });
         } else {
-          _showError(responseData['message'] ?? 'login_failed'.tr());
+          // Show simple error SnackBar at bottom
+          _showErrorSnackBar(responseData['detail'] ?? 'login_failed'.tr());
         }
       } catch (error) {
-        _showError('connection_error'.tr());
+        print('Login error: $error');
+        // Show simple error SnackBar at bottom
+        _showErrorSnackBar('connection_error'.tr());
       } finally {
         setState(() => _isLoading = false);
       }
     }
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-      ),
-    );
   }
 
   @override
@@ -97,6 +281,8 @@ class _LoginPageState extends State<LoginPage> {
 
     return Scaffold(
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -110,76 +296,56 @@ class _LoginPageState extends State<LoginPage> {
         child: SafeArea(
           child: Directionality(
             textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 40),
-                    _buildBackButton(isArabic),
-                    const SizedBox(height: 30),
-                    Text(
-                      "welcome_back".tr(),
-                      style: GoogleFonts.poppins(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+            child: Align(
+              alignment: const Alignment(0.0, -0.3), // Position between center and top
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min, // Changed to min
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        "welcome_back".tr(),
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "sign_in_to_continue".tr(),
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        color: Colors.white.withOpacity(0.8),
+                      const SizedBox(height: 8),
+                      Text(
+                        "sign_in_to_continue".tr(),
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          color: Colors.white.withOpacity(0.8),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 50),
-                    Form(
-                      key: _formKey,
-                      child: Column(
-                        children: [
-                          _buildEmailField(),
-                          const SizedBox(height: 20),
-                          _buildPasswordField(),
-                          const SizedBox(height: 16),
-                          _buildRememberMeSection(),
-                          const SizedBox(height: 40),
-                          _buildLoginButton(),
-                          const SizedBox(height: 24),
-                          _buildSocialDivider(),
-                          const SizedBox(height: 24),
-                          _buildSocialButtons(),
-                          const SizedBox(height: 40),
-                          _buildSignupPrompt(),
-                          const SizedBox(height: 30),
-                        ],
+                      const SizedBox(height: 40),
+                      Form(
+                        key: _formKey,
+                        child: Column(
+                          children: [
+                            _buildEmailField(),
+                            const SizedBox(height: 20),
+                            _buildPasswordField(),
+                            const SizedBox(height: 16),
+                            _buildRememberMeSection(),
+                            const SizedBox(height: 30),
+                            _buildLoginButton(),
+                            const SizedBox(height: 30),
+                            _buildSignupPrompt(),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBackButton(bool isArabic) {
-    return GestureDetector(
-      onTap: () => Navigator.pop(context),
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(
-          isArabic ? Icons.arrow_forward_ios_rounded : Icons.arrow_back_ios_new_rounded,
-          color: Colors.white,
-          size: 20,
         ),
       ),
     );
@@ -243,38 +409,28 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _buildRememberMeSection() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            SizedBox(
-              height: 24,
-              width: 24,
-              child: Checkbox(
-                value: _rememberMe,
-                onChanged: (value) => setState(() => _rememberMe = value ?? false),
-                fillColor: MaterialStateProperty.resolveWith<Color>(
-                      (Set<MaterialState> states) => states.contains(MaterialState.selected)
-                      ? Colors.white
-                      : Colors.white.withOpacity(0.3),
-                ),
-                checkColor: const Color(0xFF1E3A8A),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-              ),
+        SizedBox(
+          height: 24,
+          width: 24,
+          child: Checkbox(
+            value: _rememberMe,
+            onChanged: (value) => setState(() => _rememberMe = value ?? false),
+            fillColor: MaterialStateProperty.resolveWith<Color>(
+                  (Set<MaterialState> states) => states.contains(MaterialState.selected)
+                  ? Colors.white
+                  : Colors.white.withOpacity(0.3),
             ),
-            const SizedBox(width: 8),
-            Text(
-              "remember_me".tr(),
-              style: GoogleFonts.poppins(color: Colors.white),
-            ),
-          ],
-        ),
-        TextButton(
-          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("password_reset_pending".tr())),
+            checkColor: const Color(0xFF1E3A8A),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
           ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () => setState(() => _rememberMe = !_rememberMe),
           child: Text(
-            "forgot_password".tr(),
+            "remember_me".tr(),
             style: GoogleFonts.poppins(color: Colors.white),
           ),
         ),
@@ -303,69 +459,10 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildSocialDivider() {
-    return Row(
-      children: [
-        Expanded(child: Divider(color: Colors.white.withOpacity(0.3))),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            "or_continue_with".tr(),
-            style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.7)),
-          ),
-        ),
-        Expanded(child: Divider(color: Colors.white.withOpacity(0.3))),
-      ],
-    );
-  }
-
-  Widget _buildSocialButtons() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildSocialButton(
-          onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("social_login_pending".tr())),
-          ),
-          iconPath: 'assets/icons/google.png',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSocialButton({required VoidCallback onPressed, required String iconPath}) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 60,
-        height: 60,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Image.asset(
-            iconPath,
-            width: 30,
-            height: 30,
-            errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, color: Colors.grey),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildSignupPrompt() {
     return Center(
       child: RichText(
+        textAlign: TextAlign.center,
         text: TextSpan(
           text: "no_account_prompt".tr(),
           style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.8)),

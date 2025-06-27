@@ -6,6 +6,7 @@ import 'package:pharma_scan/screens/auth/welcome_screen.dart';
 import 'package:pharma_scan/screens/auth/login_screen.dart';
 import 'package:pharma_scan/screens/auth/signup_screen.dart';
 import 'package:pharma_scan/screens/home/home_screen.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EasyLocalization.ensureInitialized();
@@ -26,7 +27,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Pharma Scan',
+            title: 'Pharma Scan',
       debugShowCheckedModeBanner: false,
       localizationsDelegates: context.localizationDelegates,
       supportedLocales: context.supportedLocales,
@@ -36,6 +37,7 @@ class MyApp extends StatelessWidget {
         visualDensity: VisualDensity.adaptivePlatformDensity,
         fontFamily: 'Poppins',
       ),
+
       home: const WelcomeScreen(),
       routes: {
         '/login': (context) =>  LoginPage(),
@@ -45,7 +47,6 @@ class MyApp extends StatelessWidget {
         '/history': (context) => HistoryScreen(),
       },
       onGenerateRoute: (settings) {
-        // Add any custom route generation logic here if needed
         return MaterialPageRoute(
           builder: (context) => const WelcomeScreen(),
         );

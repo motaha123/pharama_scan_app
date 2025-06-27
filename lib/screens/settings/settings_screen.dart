@@ -3,11 +3,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:ui' as ui;
 import '../auth/welcome_screen.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'dart:async';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -16,78 +16,31 @@ class SettingsScreen extends StatefulWidget {
   _SettingsScreenState createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
-  bool _darkModeEnabled = false;
-  bool _autoSaveEnabled = true;
+class _SettingsScreenState extends State<SettingsScreen> {
   String _appVersion = 'Beta';
   String _userName = '';
   String _userEmail = '';
+  String _userId = '';
   bool _isLoading = true;
-  Timer? _autoSaveTimer;
+
+  // FastAPI backend URL
+  final String baseUrl = 'http://192.168.1.8:5000';
+
+  // Secure storage for JWT tokens
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _loadSettings();
     _getAppVersion();
     _loadUserData();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _autoSaveTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      // Save any pending changes when app goes to background
-      if (_autoSaveEnabled) {
-        _saveAllSettings();
-      }
-    }
-  }
-
-  void autoSave(Function saveFunction) {
-    if (_autoSaveTimer != null) {
-      _autoSaveTimer!.cancel();
-    }
-
-    _autoSaveTimer = Timer(Duration(seconds: 1), () {
-      if (_autoSaveEnabled) {
-        saveFunction();
-      }
-    });
-  }
-
-  void _showAutoSaveNotification() {
-    if (_autoSaveEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('settings_saved'.tr()),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 1),
-        ),
-      );
-    }
-  }
-
-  void _saveAllSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('dark_mode_enabled', _darkModeEnabled);
-    await prefs.setBool('auto_save_enabled', _autoSaveEnabled);
-    // Save other settings as needed
-  }
-
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _darkModeEnabled = prefs.getBool('dark_mode_enabled') ?? false;
-      _autoSaveEnabled = prefs.getBool('auto_save_enabled') ?? true;
-    });
   }
 
   Future<void> _getAppVersion() async {
@@ -102,46 +55,75 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
+      final userId = prefs.getString('user_id');
+      final userName = prefs.getString('user_name');
+      final userEmail = prefs.getString('user_email');
 
-      if (token == null) {
-        // No token found, user is not logged in
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-              (Route<dynamic> route) => false,
-        );
+      if (userId == null || userName == null || userEmail == null) {
+        _handleAuthError();
         return;
       }
 
-      // Make API request to get user profile
-      final response = await http.get(
-        Uri.parse('http://192.168.1.131:5000/api/users/me'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
+      // Get JWT token for authenticated request
+      final token = await _secureStorage.read(key: 'jwt_token');
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+      if (token != null) {
+        // Fetch fresh user data from FastAPI with JWT authentication
+        final response = await http.get(
+          Uri.parse('$baseUrl/api/users/me'),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        );
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          setState(() {
+            _userId = data['user']['id'];
+            _userName = data['user']['name'];
+            _userEmail = data['user']['email'];
+            _isLoading = false;
+          });
+
+          // Update stored data
+          await prefs.setString('user_name', _userName);
+          await prefs.setString('user_email', _userEmail);
+        } else {
+          // Use stored data if API fails
+          setState(() {
+            _userId = userId;
+            _userName = userName;
+            _userEmail = userEmail;
+            _isLoading = false;
+          });
+        }
+      } else {
+        // Use stored data if no token
         setState(() {
-          _userName = data['user']['name'];
-          _userEmail = data['user']['email'];
+          _userId = userId;
+          _userName = userName;
+          _userEmail = userEmail;
           _isLoading = false;
         });
-      } else {
-        // Token might be invalid or expired
-        _handleAuthError();
       }
     } catch (error) {
       print('Error loading user data: $error');
-      setState(() => _isLoading = false);
+      // Fallback to stored data
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _userId = prefs.getString('user_id') ?? '';
+        _userName = prefs.getString('user_name') ?? '';
+        _userEmail = prefs.getString('user_email') ?? '';
+        _isLoading = false;
+      });
     }
   }
 
   void _handleAuthError() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
+    await prefs.clear();
+    await _secureStorage.deleteAll();
 
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (context) => const WelcomeScreen()),
@@ -151,18 +133,25 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
+    final isArabic = context.locale.languageCode == 'ar';
+
     return Scaffold(
+      backgroundColor: const Color(0xFF1E3A8A), // Set scaffold background color
       appBar: AppBar(
         title: Text(
           'settings'.tr(),
           style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.bold, color: Colors.white
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white
           ),
         ),
         backgroundColor: const Color(0xFF5170FF),
+        elevation: 0,
       ),
       body: Container(
+        width: double.infinity,
+        height: double.infinity, // Ensure full height
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -174,79 +163,61 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+          child: Directionality(
+            textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSectionTitle('account'.tr()),
-                _buildProfileCard(),
-                const SizedBox(height: 24),
-                _buildSectionTitle('app_preferences'.tr()),
-                _buildLanguageSelector(),
-                const SizedBox(height: 8),
-                _buildSettingSwitch(
-                  'dark_mode'.tr(),
-                  'dark_mode_desc'.tr(),
-                  _darkModeEnabled,
-                      (value) {
-                    setState(() => _darkModeEnabled = value);
-                    autoSave(() async {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setBool('dark_mode_enabled', value);
-                      _showAutoSaveNotification();
-                    });
-                  },
-                  Icons.dark_mode,
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionTitle('account'.tr()),
+                        _buildProfileCard(),
+                        const SizedBox(height: 24),
+
+                        _buildSectionTitle('app_preferences'.tr()),
+                        _buildLanguageSelector(),
+                        const SizedBox(height: 24),
+
+                        _buildSectionTitle('data_privacy'.tr()),
+
+                        _buildSettingItem(
+                          'prescription_history'.tr(),
+                          'view_manage_prescriptions'.tr(),
+                          Icons.history,
+                              () => Navigator.pushNamed(context, '/history'),
+                        ),
+
+                        // Removed delete account section
+
+                        const SizedBox(height: 24),
+                        _buildSectionTitle('app_info'.tr()),
+
+                        _buildSettingItem(
+                          'app_version'.tr(),
+                          'v$_appVersion',
+                          Icons.info,
+                              () => _showVersionInfo(),
+                          showTrailingIcon: false,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                _buildSettingSwitch(
-                  'auto_save'.tr(),
-                  'auto_save_desc'.tr(),
-                  _autoSaveEnabled,
-                      (value) {
-                    setState(() => _autoSaveEnabled = value);
-                    // Auto-save setting itself should be saved immediately
-                    SharedPreferences.getInstance().then((prefs) {
-                      prefs.setBool('auto_save_enabled', value);
-                    });
-                  },
-                  Icons.save,
+
+                // Logout button fixed at bottom
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      _buildLogoutButton(),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 24),
-                _buildSectionTitle('data_privacy'.tr()),
-                _buildSettingItem(
-                  'privacy_policy'.tr(),
-                  'privacy_policy_desc'.tr(),
-                  Icons.privacy_tip,
-                      () {},
-                ),
-                _buildSettingItem(
-                  'delete_account'.tr(),
-                  'delete_account_desc'.tr(),
-                  Icons.delete_forever,
-                  _showDeleteAccountDialog,
-                  textColor: Colors.red,
-                ),
-                const SizedBox(height: 24),
-                _buildSectionTitle('support'.tr()),
-                _buildSettingItem(
-                  'contact_us'.tr(),
-                  'contact_us_desc'.tr(),
-                  Icons.mail,
-                      () {},
-                ),
-                const SizedBox(height: 24),
-                _buildSectionTitle('about'.tr()),
-                _buildSettingItem(
-                  'app_version'.tr(),
-                  'v$_appVersion',
-                  Icons.info,
-                      () {},
-                  showTrailingIcon: false,
-                ),
-                const SizedBox(height: 24),
-                _buildLogoutButton(),
-                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -256,8 +227,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   }
 
   Widget _buildLanguageSelector() {
-    final isArabic = context.locale.languageCode == 'ar';
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: Container(
@@ -276,7 +245,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             ),
           ),
           subtitle: Text(
-            'change_language_desc'.tr(),
+            'change_app_language'.tr(),
             style: GoogleFonts.poppins(
               color: Colors.white.withOpacity(0.7),
               fontSize: 12,
@@ -309,9 +278,11 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 await prefs.setString('language', locale.languageCode);
                 context.setLocale(locale);
 
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-                      (Route<dynamic> route) => false,
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('language_changed_successfully'.tr()),
+                    backgroundColor: Colors.green,
+                  ),
                 );
               }
             },
@@ -342,25 +313,32 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
       ),
       child: _isLoading
           ? Center(
-        child: CircularProgressIndicator(
-          color: Colors.white,
-        ),
+        child: CircularProgressIndicator(color: Colors.white),
       )
           : Row(
         children: [
-          CircleAvatar(
-            radius: 32,
-            backgroundColor: Colors.white.withOpacity(0.3),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.white.withOpacity(0.3), Colors.white.withOpacity(0.1)],
+              ),
+              shape: BoxShape.circle,
+            ),
             child: _userName.isNotEmpty
-                ? Text(
-              _userName[0].toUpperCase(),
-              style: GoogleFonts.poppins(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+                ? Center(
+              child: Text(
+                _userName[0].toUpperCase(),
+                style: GoogleFonts.poppins(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
             )
                 : const Icon(
@@ -375,7 +353,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _userName,
+                  _userName.isEmpty ? 'loading'.tr() : _userName,
                   style: GoogleFonts.poppins(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -384,56 +362,33 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _userEmail,
+                  _userEmail.isEmpty ? 'loading'.tr() : _userEmail,
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     color: Colors.white.withOpacity(0.8),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    'active_user'.tr(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: Colors.green[300],
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSettingSwitch(
-      String title,
-      String subtitle,
-      bool value,
-      Function(bool) onChanged,
-      IconData icon,
-      ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: SwitchListTile(
-          title: Text(
-            title,
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: Colors.white,
-            ),
-          ),
-          subtitle: Text(
-            subtitle,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-          value: value,
-          onChanged: onChanged,
-          activeColor: Colors.white,
-          activeTrackColor: Colors.green,
-          secondary: Icon(icon, color: Colors.white),
-        ),
       ),
     );
   }
@@ -452,9 +407,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
         ),
         child: ListTile(
-          leading: Icon(icon, color: Colors.white),
+          leading: Icon(icon, color: textColor ?? Colors.white),
           title: Text(
             title,
             style: GoogleFonts.poppins(
@@ -471,7 +427,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             ),
           ),
           trailing: showTrailingIcon
-              ? const Icon(Icons.arrow_forward_ios, color: Colors.white70)
+              ? const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 16)
               : null,
           onTap: onTap,
         ),
@@ -505,8 +461,15 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('log_out'.tr()),
-        content: Text('logout_confirmation'.tr()),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'log_out'.tr(),
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'are_you_sure_logout'.tr(),
+          style: GoogleFonts.poppins(),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -514,9 +477,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           ),
           ElevatedButton(
             onPressed: () async {
-              // Clear the token
               final prefs = await SharedPreferences.getInstance();
-              await prefs.remove('token');
+              await prefs.clear();
+              await _secureStorage.deleteAll();
 
               Navigator.pop(context);
               Navigator.pushNamedAndRemoveUntil(
@@ -535,28 +498,32 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     );
   }
 
-  void _showDeleteAccountDialog() {
+  void _showVersionInfo() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('delete_account'.tr()),
-        content: Text('delete_account_warning'.tr()),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'app_information'.tr(),
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${'version'.tr()}: $_appVersion'),
+            SizedBox(height: 8),
+            Text('${'build'.tr()}: 2025.1.0'),
+            SizedBox(height: 8),
+            Text('${'backend'.tr()}: FastAPI'),
+            SizedBox(height: 8),
+            Text('${'database'.tr()}: MongoDB'),
+          ],
+        ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('cancel'.tr()),
-          ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/',
-                    (route) => false,
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: Text('delete'.tr()),
+            onPressed: () => Navigator.pop(context),
+            child: Text('close'.tr()),
           ),
         ],
       ),

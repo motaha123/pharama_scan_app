@@ -1,10 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:http/http.dart' as http;
 import 'dart:ui' as ui;
-import '../../models/medication.dart';
-import '../../models/prescription.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({Key? key}) : super(key: key);
@@ -14,81 +15,490 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  List<Prescription> _prescriptions = [];
-  List<Prescription> _filteredPrescriptions = [];
+  List<Map<String, dynamic>> _prescriptions = [];
   bool _isLoading = true;
   String _searchQuery = '';
-  SortOption _currentSortOption = SortOption.dateDesc;
-  FilterOption _currentFilterOption = FilterOption.all;
+  String _sortBy = 'date';
+  String _userId = '';
+
+  // Add secure storage for JWT tokens
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
+
+
 
   @override
   void initState() {
     super.initState();
-    _loadPrescriptions();
+    _loadUserData();
   }
 
-  Future<void> _loadPrescriptions() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // In a real app, you would fetch this data from a database or backend
-    // For demo purposes, we'll use some mock data
-    await Future.delayed(Duration(milliseconds: 800)); // Simulating network delay
-
-    List<Prescription> mockPrescriptions = [
-      // Add mock prescriptions here
-    ];
-
-    setState(() {
-      _prescriptions = mockPrescriptions;
-      _applyFiltersAndSort();
-      _isLoading = false;
-    });
-  }
-
-  void _applyFiltersAndSort() {
-    // First apply search filter
-    if (_searchQuery.isEmpty) {
-      _filteredPrescriptions = List.from(_prescriptions);
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    _userId = prefs.getString('user_id') ?? '';
+    if (_userId.isNotEmpty) {
+      await _fetchPrescriptionHistory();
     } else {
-      _filteredPrescriptions = _prescriptions.where((prescription) {
-        return prescription.recognizedText.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-            prescription.medications.any((med) => med.name.toLowerCase().contains(_searchQuery.toLowerCase()));
-      }).toList();
+      setState(() => _isLoading = false);
     }
+  }
 
-    // Then apply status filter
-    if (_currentFilterOption != FilterOption.all) {
-      PrescriptionStatus statusFilter;
-      switch (_currentFilterOption) {
-        case FilterOption.filled:
-          statusFilter = PrescriptionStatus.filled;
-          break;
-        case FilterOption.sentToPharmacy:
-          statusFilter = PrescriptionStatus.sentToPharmacy;
-          break;
-        case FilterOption.unprocessed:
-          statusFilter = PrescriptionStatus.unprocessed;
-          break;
-        default:
-          statusFilter = PrescriptionStatus.unprocessed;
+  // UPDATED: Add JWT authentication to fetch prescription history
+  Future<void> _fetchPrescriptionHistory() async {
+    try {
+      // Get JWT token from secure storage
+      final token = await _secureStorage.read(key: 'jwt_token');
+
+      if (token == null) {
+        throw Exception('No authentication token found. Please login again.');
+      }
+
+      // Use the new JWT-authenticated endpoint
+      final response = await http.get(
+        Uri.parse('http://192.168.1.8:5000/api/prescriptions/history'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token', // Add JWT token
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        final prescriptionsData = responseData['prescriptions'] as List<dynamic>;
+
+        setState(() {
+          _prescriptions = prescriptionsData
+              .map((prescription) => prescription as Map<String, dynamic>)
+              .toList();
+          _isLoading = false;
+        });
+      } else if (response.statusCode == 401) {
+        // Token expired or invalid
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        throw Exception('Failed to load prescription history: ${response.statusCode}');
+      }
+    } catch (error) {
+      print('Error fetching prescription history: $error');
+      setState(() => _isLoading = false);
+
+      // Handle authentication errors specifically
+      if (error.toString().contains('authentication') ||
+          error.toString().contains('login again')) {
+        _showErrorSnackBar('Session expired. Please login again.');
+        // Optionally navigate to login screen
+        // Navigator.pushReplacementNamed(context, '/login');
+      } else {
+        _showErrorSnackBar('failed_to_load_history'.tr());
       }
     }
+  }
 
-    // Finally apply sorting
-    _filteredPrescriptions.sort((a, b) {
-      switch (_currentSortOption) {
-        case SortOption.dateDesc:
-          return b.dateScanned.compareTo(a.dateScanned);
-        case SortOption.dateAsc:
-          return a.dateScanned.compareTo(b.dateScanned);
-        case SortOption.doctorAZ:
-          return a.doctorName.compareTo(b.doctorName);
-        case SortOption.doctorZA:
-          return b.doctorName.compareTo(a.doctorName);
+  // Custom SnackBar for Success Messages
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF5170FF), // Your app's primary blue
+                Color(0xFF1E3A8A), // Your app's secondary blue
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF5170FF).withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.done,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  // Custom SnackBar for Error Messages
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF1E3A8A), // Your app's secondary blue
+                Color(0xFFE53E3E), // Red for error indication
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.red.withOpacity(0.3),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF1E3A8A).withOpacity(0.4),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.red.withOpacity(0.4),
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.error_outline,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(
+                  Icons.warning,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  // Updated to use prescription name from backend
+  String _getPrescriptionName(Map<String, dynamic> prescription) {
+    // Use the prescription_name from backend if available
+    if (prescription['prescription_name'] != null) {
+      return prescription['prescription_name'];
+    }
+
+    // Fallback: use prescription_number if available
+    if (prescription['prescription_number'] != null) {
+      return 'Prescription ${prescription['prescription_number']}';
+    }
+
+    // Final fallback: use index + 1
+    final index = _prescriptions.indexOf(prescription);
+    return 'prescription_name'.tr(args: [(index + 1).toString()]);
+  }
+
+  // Helper method to get appropriate icon based on medication form
+  IconData _getFormIcon(String form) {
+    switch (form.toLowerCase()) {
+      case 'tablet':
+        return Icons.medication;
+      case 'capsule':
+        return Icons.medication_liquid;
+      case 'powder':
+        return Icons.scatter_plot;
+      case 'cream':
+        return Icons.colorize;
+      case 'inhaler':
+        return Icons.air;
+      case 'nasal spray':
+        return Icons.water_drop;
+      default:
+        return Icons.medication;
+    }
+  }
+
+  Future<void> _deletePrescription(String prescriptionId) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.orange,
+              size: 28,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'delete_prescription'.tr(),
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'delete_prescription_confirmation'.tr(),
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'action_cannot_be_undone'.tr(),
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: Colors.red,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'cancel'.tr(),
+              style: GoogleFonts.poppins(
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(
+              'delete'.tr(),
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      await _performDelete(prescriptionId);
+    }
+  }
+
+  Future<void> _performDelete(String prescriptionId) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Container(
+        color: Colors.black54,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(
+                  color: Color(0xFF5170FF),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'deleting_prescription'.tr(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // Get JWT token from secure storage
+      final token = await _secureStorage.read(key: 'jwt_token');
+
+      if (token == null) {
+        throw Exception('No authentication token found. Please login again.');
       }
-    });
+
+      final response = await http.delete(
+        Uri.parse('http://192.168.1.8:5000/api/prescriptions/$prescriptionId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token', // Add JWT token
+        },
+        // Remove user_id from body since backend gets it from JWT token
+      );
+
+      Navigator.pop(context); // Hide loading
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _prescriptions.removeWhere((prescription) => prescription['id'] == prescriptionId);
+        });
+        _showSuccessSnackBar('prescription_deleted_successfully'.tr());
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['detail'] ?? 'Failed to delete prescription');
+      }
+    } catch (error) {
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
+      print('Error deleting prescription: $error');
+
+      if (error.toString().contains('authentication') ||
+          error.toString().contains('login again')) {
+        _showErrorSnackBar('Session expired. Please login again.');
+      } else {
+        _showErrorSnackBar('failed_to_delete_prescription'.tr());
+      }
+    }
+  }
+
+  // Updated filtering and sorting with backend prescription names
+  List<Map<String, dynamic>> get _filteredPrescriptions {
+    var filtered = _prescriptions.where((prescription) {
+      final searchLower = _searchQuery.toLowerCase();
+      final recognizedText = (prescription['recognized_text'] ?? '').toString().toLowerCase();
+      final medications = prescription['medications'] as List<dynamic>? ?? [];
+      final medicationNames = medications
+          .map((med) => (med['name'] ?? '').toString().toLowerCase())
+          .join(' ');
+
+      // Search by prescription name from backend
+      final prescriptionName = _getPrescriptionName(prescription).toLowerCase();
+
+      return prescriptionName.contains(searchLower) ||
+          recognizedText.contains(searchLower) ||
+          medicationNames.contains(searchLower);
+    }).toList();
+
+    // Sort prescriptions with proper numbering
+    switch (_sortBy) {
+      case 'name':
+      // Sort by prescription number from backend
+        filtered.sort((a, b) {
+          final numberA = a['prescription_number'] ?? 0;
+          final numberB = b['prescription_number'] ?? 0;
+          return numberA.compareTo(numberB);
+        });
+        break;
+      case 'status':
+        filtered.sort((a, b) => (a['status'] ?? '').toString().compareTo(
+            (b['status'] ?? '').toString()));
+        break;
+      case 'date':
+      default:
+        filtered.sort((a, b) {
+          final dateA = DateTime.tryParse(a['scan_date'] ?? '') ?? DateTime.now();
+          final dateB = DateTime.tryParse(b['scan_date'] ?? '') ?? DateTime.now();
+          return dateB.compareTo(dateA); // Most recent first
+        });
+        break;
+    }
+
+    return filtered;
   }
 
   @override
@@ -98,26 +508,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'history'.tr(),
+          'prescription_history'.tr(),
           style: GoogleFonts.poppins(
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: Color(0xFF5170FF),
+        backgroundColor: const Color(0xFF5170FF),
         actions: [
           IconButton(
-            icon: Icon(Icons.filter_list),
-            onPressed: _showFilterOptions,
-          ),
-          IconButton(
-            icon: Icon(Icons.sort),
-            onPressed: _showSortOptions,
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              setState(() => _isLoading = true);
+              _fetchPrescriptionHistory();
+            },
           ),
         ],
       ),
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
@@ -132,733 +541,657 @@ class _HistoryScreenState extends State<HistoryScreen> {
             textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
             child: Column(
               children: [
-                // Search Bar
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: TextField(
-                    style: TextStyle(color: Colors.white),
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value;
-                        _applyFiltersAndSort();
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'search_prescriptions'.tr(),
-                      hintStyle: TextStyle(color: Colors.white70),
-                      prefixIcon: Icon(Icons.search, color: Colors.white70),
-                      filled: true,
-                      fillColor: Colors.white.withOpacity(0.1),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-
-                // Filter Chips
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      _buildFilterChip(FilterOption.all, 'filter_all'.tr()),
-                      SizedBox(width: 8),
-                      _buildFilterChip(FilterOption.filled, 'filter_filled'.tr()),
-                      SizedBox(width: 8),
-                      _buildFilterChip(FilterOption.sentToPharmacy, 'filter_sent'.tr()),
-                      SizedBox(width: 8),
-                      _buildFilterChip(FilterOption.unprocessed, 'filter_unprocessed'.tr()),
-                    ],
-                  ),
-                ),
-
-                SizedBox(height: 8),
+                // Search and Filter Section
+                _buildSearchAndFilter(),
 
                 // Prescriptions List
                 Expanded(
                   child: _isLoading
-                      ? Center(child: CircularProgressIndicator(color: Colors.white))
-                      : _filteredPrescriptions.isEmpty
-                      ? Center(
-                    child: Text(
-                      'no_prescriptions'.tr(),
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        color: Colors.white,
-                      ),
-                    ),
+                      ? const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
                   )
-                      : ListView.builder(
-                    padding: EdgeInsets.all(16),
-                    itemCount: _filteredPrescriptions.length,
-                    itemBuilder: (context, index) {
-                      final prescription = _filteredPrescriptions[index];
-                      return _buildPrescriptionCard(prescription);
-                    },
-                  ),
+                      : _filteredPrescriptions.isEmpty
+                      ? _buildEmptyState()
+                      : _buildPrescriptionsList(),
                 ),
               ],
             ),
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // Navigate to scan page
-          Navigator.pop(context);
-        },
-        backgroundColor: Colors.white,
-        child: Icon(Icons.add_a_photo, color: Color(0xFF1E3A8A)),
-      ),
     );
   }
 
-  Widget _buildFilterChip(FilterOption option, String label) {
-    return FilterChip(
-      selected: _currentFilterOption == option,
-      label: Text(label),
-      onSelected: (selected) {
-        setState(() {
-          _currentFilterOption = selected ? option : FilterOption.all;
-          _applyFiltersAndSort();
-        });
-      },
-      backgroundColor: Colors.white.withOpacity(0.1),
-      selectedColor: Colors.white,
-      checkmarkColor: Color(0xFF1E3A8A),
-      labelStyle: GoogleFonts.poppins(
-        color: _currentFilterOption == option ? Color(0xFF1E3A8A) : Colors.white,
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    );
-  }
-
-  Widget _buildPrescriptionCard(Prescription prescription) {
-    final isArabic = context.locale.languageCode == 'ar';
-
-    return Card(
-      margin: EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      elevation: 4,
-      child: InkWell(
-        onTap: () => _showPrescriptionDetails(prescription),
-        borderRadius: BorderRadius.circular(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Prescription Header with Date and Status
-            Container(
-              padding: EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Color(0xFF5170FF).withOpacity(0.1),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    DateFormat('MMM dd, yyyy', context.locale.toString()).format(prescription.dateScanned),
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF1E3A8A),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Prescription Content
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Prescription Image
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.asset(
-                      prescription.imagePath,
-                      width: 80,
-                      height: 80,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          width: 80,
-                          height: 80,
-                          color: Colors.grey[200],
-                          child: Icon(
-                            Icons.image_not_supported,
-                            color: Colors.grey[500],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  SizedBox(width: 16),
-
-                  // Prescription Details
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Dr. ${prescription.doctorName}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF1E3A8A),
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          prescription.medications.map((m) => m.name).join(', '),
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: Colors.black87,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Arrow Icon
-                  Icon(
-                    isArabic ? Icons.arrow_back_ios : Icons.arrow_forward_ios,
-                    size: 16,
-                    color: Colors.grey[400],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusChip(PrescriptionStatus status) {
-    Color backgroundColor;
-    String label;
-
-    switch (status) {
-      case PrescriptionStatus.filled:
-        backgroundColor = Colors.green;
-        label = 'status_filled'.tr();
-        break;
-      case PrescriptionStatus.sentToPharmacy:
-        backgroundColor = Colors.orange;
-        label = 'status_sent'.tr();
-        break;
-      case PrescriptionStatus.unprocessed:
-        backgroundColor = Colors.grey;
-        label = 'status_new'.tr();
-        break;
-    }
-
+  Widget _buildSearchAndFilter() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        label,
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        ),
-      ),
-    );
-  }
-
-  void _showPrescriptionDetails(Prescription prescription) {
-    final isArabic = context.locale.languageCode == 'ar';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Directionality(
-        textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
-        child: Container(
-          height: MediaQuery.of(context).size.height * 0.85,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Color(0xFF5170FF),
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'prescription_details'.tr(),
-                          style: GoogleFonts.poppins(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.close, color: Colors.white),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'scanned_on'.tr() + ' ${DateFormat('MMMM dd, yyyy', context.locale.toString()).format(prescription.dateScanned)}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: Colors.white.withOpacity(0.9),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Content
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Doctor Information
-                      _buildDetailSection(
-                        title: 'doctor'.tr(),
-                        content: prescription.doctorName,
-                        icon: Icons.person,
-                      ),
-                      Divider(),
-                      // Medications
-                      Text(
-                        'medications'.tr(),
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E3A8A),
-                        ),
-                      ),
-                      SizedBox(height: 16),
-
-                      // Medication Cards
-                      ...prescription.medications.map((medication) => _buildMedicationCard(medication)),
-
-                      SizedBox(height: 24),
-
-                      // Original Prescription Image
-                      Text(
-                        'original_prescription'.tr(),
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E3A8A),
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.asset(
-                          prescription.imagePath,
-                          width: double.infinity,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              height: 200,
-                              color: Colors.grey[200],
-                              child: Center(
-                                child: Icon(
-                                  Icons.image_not_supported,
-                                  color: Colors.grey[500],
-                                  size: 48,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-
-                      SizedBox(height: 24),
-
-                      // Recognized Text
-                      Text(
-                        'recognized_text'.tr(),
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E3A8A),
-                        ),
-                      ),
-                      SizedBox(height: 12),
-                      Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey[300]!),
-                        ),
-                        child: Text(
-                          prescription.recognizedText,
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // Action Buttons
-              Padding(
-                padding: EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    // Share Button
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          // Implement share functionality
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('prescription_shared'.tr()))
-                          );
-                        },
-                        icon: Icon(Icons.share),
-                        label: Text('share'.tr()),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Color(0xFF1E3A8A),
-                          side: BorderSide(color: Color(0xFF1E3A8A)),
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 16),
-
-                    // Send to Pharmacy Button
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          // Implement send to pharmacy functionality
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('sent_to_pharmacy'.tr()))
-                          );
-                        },
-                        icon: Icon(Icons.local_pharmacy),
-                        label: Text('send_to_pharmacy'.tr()),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(0xFF1E3A8A),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailSection({
-    required String title,
-    required String content,
-    required IconData icon,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Color(0xFF5170FF).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              color: Color(0xFF5170FF),
-              size: 24,
-            ),
-          ),
-          SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  content,
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E3A8A),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMedicationCard(Medication medication) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 16),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(0.1),
             blurRadius: 8,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
-        border: Border.all(color: Color(0xFF5170FF).withOpacity(0.2)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            medication.name,
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E3A8A),
+          // Search Bar
+          TextField(
+            onChanged: (value) {
+              setState(() => _searchQuery = value);
+            },
+            decoration: InputDecoration(
+              hintText: 'search_prescriptions'.tr(),
+              prefixIcon: const Icon(Icons.search),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF5170FF)),
+              ),
             ),
           ),
-          SizedBox(height: 8),
-          _buildMedicationDetail('dosage'.tr(), medication.dosage),
-          SizedBox(height: 4),
-          _buildMedicationDetail('frequency'.tr(), medication.frequency),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildMedicationDetail(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(
-            label + ':',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.black87,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+          const SizedBox(height: 12),
 
-  void _showSortOptions() {
-    final isArabic = context.locale.languageCode == 'ar';
-
-    showModalBottomSheet(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Directionality(
-        textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
-        child: Container(
-          padding: EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+          // Sort Options
+          Row(
             children: [
               Text(
                 'sort_by'.tr(),
                 style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E3A8A),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              SizedBox(height: 16),
-              _buildSortOption(SortOption.dateDesc, 'dateDesc'.tr()),
-              _buildSortOption(SortOption.dateAsc, 'dateAsc'.tr()),
-              _buildSortOption(SortOption.doctorAZ, 'doctorAZ'.tr()),
-              _buildSortOption(SortOption.doctorZA, 'doctorZA'.tr()),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButton<String>(
+                  value: _sortBy,
+                  isExpanded: true,
+                  onChanged: (value) {
+                    setState(() => _sortBy = value ?? 'date');
+                  },
+                  items: [
+                    DropdownMenuItem(
+                      value: 'date',
+                      child: Text('date'.tr()),
+                    ),
+                    DropdownMenuItem(
+                      value: 'name',
+                      child: Text('name'.tr()),
+                    ),
+                    DropdownMenuItem(
+                      value: 'status',
+                      child: Text('status'.tr()),
+                    ),
+                  ],
+                ),
+              ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.history,
+            size: 80,
+            color: Colors.white.withOpacity(0.5),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'no_prescriptions_found'.tr(),
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'scan_first_prescription'.tr(),
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              color: Colors.white.withOpacity(0.8),
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pushNamed(context, '/home');
+            },
+            icon: const Icon(Icons.add_a_photo),
+            label: Text('scan_prescription'.tr()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF1E3A8A),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrescriptionsList() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: _filteredPrescriptions.length,
+      itemBuilder: (context, index) {
+        final prescription = _filteredPrescriptions[index];
+        return _buildPrescriptionCard(prescription);
+      },
+    );
+  }
+
+  // Updated to use prescription data instead of index
+  Widget _buildPrescriptionCard(Map<String, dynamic> prescription) {
+    final medications = prescription['medications'] as List<dynamic>? ?? [];
+    final scanDate = DateTime.tryParse(prescription['scan_date'] ?? '') ?? DateTime.now();
+    final prescriptionName = _getPrescriptionName(prescription);
+
+    return Dismissible(
+      key: Key(prescription['id']),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.red,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.delete,
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'delete'.tr(),
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+      confirmDismiss: (direction) async {
+        return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('delete_prescription_title'.tr(args: [prescriptionName])),
+            content: Text('delete_prescription_confirmation'.tr()),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('cancel'.tr()),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(
+                  'delete'.tr(),
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      onDismissed: (direction) {
+        _performDelete(prescription['id']);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: InkWell(
+          onTap: () => _showPrescriptionDetails(prescription, prescriptionName),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Row
+                Row(
+                  children: [
+                    Icon(
+                      Icons.document_scanner,
+                      color: const Color(0xFF5170FF),
+                      size: 24,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            prescriptionName,
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF1E3A8A),
+                            ),
+                          ),
+                          Text(
+                            DateFormat('MMM dd, yyyy - HH:mm').format(scanDate),
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildStatusChip(prescription['status'] ?? 'processed'),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                // Medications Preview
+                if (medications.isNotEmpty) ...[
+                  Text(
+                    'medications'.tr(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: medications.take(3).map((med) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF5170FF).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _getFormIcon(med['form'] ?? 'tablet'),
+                              size: 12,
+                              color: const Color(0xFF5170FF),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              med['name'] ?? 'unknown'.tr(),
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: const Color(0xFF5170FF),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  if (medications.length > 3)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'more_medications'.tr(args: [(medications.length - 3).toString()]),
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                ],
+
+                const SizedBox(height: 12),
+
+                // Action Buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => _showPrescriptionDetails(prescription, prescriptionName),
+                      icon: const Icon(Icons.visibility, size: 16),
+                      label: Text('view_details'.tr()),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF5170FF),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      onPressed: () => _deletePrescription(prescription['id']),
+                      icon: const Icon(Icons.delete, size: 16),
+                      label: Text('delete'.tr()),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildSortOption(SortOption option, String label) {
-    return RadioListTile<SortOption>(
-      title: Text(
-        label,
+  Widget _buildStatusChip(String status) {
+    Color color;
+    String translatedStatus;
+    switch (status.toLowerCase()) {
+      case 'processed':
+        color = Colors.green;
+        translatedStatus = 'processed'.tr();
+        break;
+      case 'unprocessed':
+        color = Colors.orange;
+        translatedStatus = 'unprocessed'.tr();
+        break;
+      case 'error':
+        color = Colors.red;
+        translatedStatus = 'error'.tr();
+        break;
+      default:
+        color = Colors.grey;
+        translatedStatus = status.tr();
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        translatedStatus,
         style: GoogleFonts.poppins(
-          fontSize: 16,
-          color: Colors.black87,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: color,
         ),
       ),
-      value: option,
-      groupValue: _currentSortOption,
-      activeColor: Color(0xFF5170FF),
-      onChanged: (SortOption? value) {
-        if (value != null) {
-          setState(() {
-            _currentSortOption = value;
-            _applyFiltersAndSort();
-          });
-          Navigator.pop(context);
-        }
-      },
     );
   }
 
-  void _showFilterOptions() {
-    final isArabic = context.locale.languageCode == 'ar';
-
+  void _showPrescriptionDetails(Map<String, dynamic> prescription, String prescriptionName) {
     showModalBottomSheet(
       context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.5,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                // Handle bar
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+
+                // Header
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          prescriptionName,
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1E3A8A),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(16),
+                    child: _buildPrescriptionDetailsContent(prescription),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
-      builder: (context) => Directionality(
-        textDirection: isArabic ? ui.TextDirection.rtl : ui.TextDirection.ltr,
-        child: Container(
-          padding: EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'filter_by_status'.tr(),
-                style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E3A8A),
+    );
+  }
+
+  Widget _buildPrescriptionDetailsContent(Map<String, dynamic> prescription) {
+    final medications = prescription['medications'] as List<dynamic>? ?? [];
+    final scanDate = DateTime.tryParse(prescription['scan_date'] ?? '') ?? DateTime.now();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Basic Info
+        _buildDetailSection(
+          'basic_information'.tr(),
+          [
+            _buildDetailRow('scan_date'.tr(), DateFormat('MMMM dd, yyyy - HH:mm').format(scanDate)),
+            _buildDetailRow('status'.tr(), prescription['status'] ?? 'processed'),
+          ],
+        ),
+
+        const SizedBox(height: 20),
+
+        // Recognized Text
+        if (prescription['recognized_text'] != null && prescription['recognized_text'].toString().isNotEmpty)
+          _buildDetailSection(
+            'recognized_text'.tr(),
+            [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Text(
+                  prescription['recognized_text'],
+                  style: GoogleFonts.robotoMono(
+                    fontSize: 14,
+                    color: Colors.black87,
+                  ),
                 ),
               ),
-              SizedBox(height: 16),
-              _buildFilterOption(FilterOption.all, 'all_prescriptions'.tr()),
-              _buildFilterOption(FilterOption.filled, 'filled_prescriptions'.tr()),
-              _buildFilterOption(FilterOption.sentToPharmacy, 'sent_to_pharmacy_prescriptions'.tr()),
-              _buildFilterOption(FilterOption.unprocessed, 'unprocessed_prescriptions'.tr()),
             ],
           ),
+
+        const SizedBox(height: 20),
+
+        // Medications
+        if (medications.isNotEmpty)
+          _buildDetailSection(
+            'medications'.tr(),
+            medications.map((med) => _buildMedicationDetailCard(med)).toList(),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDetailSection(String title, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.poppins(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF1E3A8A),
+          ),
         ),
+        const SizedBox(height: 12),
+        ...children,
+      ],
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildFilterOption(FilterOption option, String label) {
-    return RadioListTile<FilterOption>(
-      title: Text(
-        label,
-        style: GoogleFonts.poppins(
-          fontSize: 16,
-          color: Colors.black87,
-        ),
+  Widget _buildMedicationDetailCard(Map<String, dynamic> medication) {
+    final confidence = (medication['confidence'] ?? 0.0) as double;
+    final form = medication['form'] ?? 'tablet';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF5170FF).withOpacity(0.3)),
       ),
-      value: option,
-      groupValue: _currentFilterOption,
-      activeColor: Color(0xFF5170FF),
-      onChanged: (FilterOption? value) {
-        if (value != null) {
-          setState(() {
-            _currentFilterOption = value;
-            _applyFiltersAndSort();
-          });
-          Navigator.pop(context);
-        }
-      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _getFormIcon(form),
+                color: const Color(0xFF5170FF),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  medication['name'] ?? 'unknown_medication'.tr(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1E3A8A),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _getConfidenceColor(confidence),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${(confidence * 100).toStringAsFixed(1)}%',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (medication['form'] != null && medication['form'] != 'N/A')
+            _buildDetailRow('form'.tr(), medication['form'].toString()),
+          if (medication['dosage'] != null && medication['dosage'] != 'N/A')
+            _buildDetailRow('dosage'.tr(), medication['dosage'].toString()),
+          if (medication['frequency'] != null && medication['frequency'] != 'N/A')
+            _buildDetailRow('frequency'.tr(), medication['frequency'].toString()),
+          if (medication['alternatives'] != null &&
+              medication['alternatives'] != 'N/A' &&
+              medication['alternatives'] != 'No alternatives available')
+            _buildDetailRow('alternatives'.tr(), medication['alternatives'].toString()),
+          if (medication['conflicts'] != null &&
+              medication['conflicts'] != 'N/A' &&
+              medication['conflicts'] != 'No conflicts listed')
+            _buildDetailRow('conflicts'.tr(), medication['conflicts'].toString()),
+        ],
+      ),
     );
   }
-}
 
-enum PrescriptionStatus {
-  unprocessed,
-  sentToPharmacy,
-  filled,
-}
-
-enum SortOption {
-  dateDesc,
-  dateAsc,
-  doctorAZ,
-  doctorZA,
-}
-
-enum FilterOption {
-  all,
-  unprocessed,
-  sentToPharmacy,
-  filled,
+  Color _getConfidenceColor(double confidence) {
+    if (confidence >= 0.8) return Colors.green;
+    if (confidence >= 0.6) return Colors.orange;
+    return Colors.red;
+  }
 }
