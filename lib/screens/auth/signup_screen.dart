@@ -473,7 +473,7 @@ class _SignupPageState extends State<SignupPage> with TickerProviderStateMixin {
       ),
     );
   }
-
+  // Sign Up Screen Design
   Widget _buildNameField() {
     final isArabic = context.locale.languageCode == 'ar';
 
