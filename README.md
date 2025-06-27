@@ -24,18 +24,17 @@ PharmaScan is a mobile application designed to digitize and interpret handwritte
 
 ### Backend
 
-- **Node.js**: Server-side JavaScript runtime
-- **Express**: Web application framework for Node.js
+- **FastApi**: Server-side Python Backend
 - **MongoDB**: NoSQL database for storing user and prescription data
 - **Bcrypt**: Password hashing for secure user data storage
-
+- 
 ## Installation
 
 ### Prerequisites
 
 - Flutter SDK (2.10.0 or higher)
 - Dart SDK (2.16.0 or higher)
-- Node.js (14.x or higher)
+- FastAPI (14.x or higher)
 - MongoDB (4.4 or higher)
 
 
@@ -64,13 +63,12 @@ npm install
 ```
 PORT=5000
 MONGO_URI=mongodb://localhost:27017/pharmascan
-JWT_SECRET=
 ```
 
 5. Start the server
 
 ```
-npm start
+uvicorn main-no-auth:app --host
 ```
 
 ### Frontend Setup
@@ -127,14 +125,6 @@ pharma_scan_app/
 
 This application is currently under development. The authentication system is fully implemented, and the prescription scanning and recognition features are being refined.
 
-## Future Enhancements
-
-- Email verification for new accounts
-- Password reset functionality
-- Dark mode support
-- Export prescriptions as PDF
-
-
 ## Contributing
 
 1. Fork the repository
@@ -152,11 +142,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
  - [OMR ABDULLAH](https://github.com/omr-ql/) : Contributed in implementing the flutter designing and backend programming using node js.  
  - [Sanad Ali]() : Contributed in writing the documentation and presentation. 
  - [Mazen Bahie](https://github.com/MazenBahie) : Contributed in implementing connect the AI model to our flutter app.س 
- - [Malik Yahya]() : Contributed implementing the natural language processing model and enhance the segmentation.
+ - [Malik Yahya](https://github.com/Malekyahya) : Contributed implementing the natural language processing model and enhance the segmentation.
 
 ## Acknowledgements
 
 - [Flutter](https://flutter.dev/)
-- [Node.js](https://nodejs.org/)
+- [FastAPI](https://fastapi.tiangolo.com/)
 - [MongoDB](https://www.mongodb.com/)
-- [Express](https://expressjs.com/)
