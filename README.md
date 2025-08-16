@@ -131,9 +131,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Authors 
  - [MHD TAHA](https://github.com/motaha123/) : Contributed in implementing the computer vision model and enhance the accuracy.
  - [OMR ABDULLAH](https://github.com/omr-ql/) : Contributed in implementing the flutter designing and backend programming using node js.  
- - [Sanad Ali]() : Contributed in writing the documentation and presentation. 
- - [Mazen Bahie](https://github.com/MazenBahie) : Contributed in implementing connect the AI model to our flutter app.س 
- - [Malik Yahya](https://github.com/Malekyahya) : Contributed implementing the natural language processing model and enhance the segmentation.
 
 ## Acknowledgements
 
